@@ -15,7 +15,7 @@ const Footer: React.FC = () => {
           fontSize="sm"
         >
           <Text color="gray.500">
-            © {currentYear} MedDiagnosis. Todos os direitos reservados.
+            © {currentYear} ImageMedAi. Todos os direitos reservados.
           </Text>
           
           <Flex align="center" mt={{ base: 2, md: 0 }}>

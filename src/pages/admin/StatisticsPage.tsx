@@ -34,8 +34,66 @@ const StatisticsPage: React.FC = () => {
   const { data: statistics, isLoading, error } = useQuery<Statistics>(
     ['statistics', period],
     async () => {
-      const response = await api.get(`/api/statistics?period=${period}`);
-      return response.data.detail;
+      try {
+        // Convert period to start_date and end_date
+        let startDate = new Date();
+        let endDate = new Date();
+        
+        switch(period) {
+          case 'weekly':
+            startDate.setDate(startDate.getDate() - 7);
+            break;
+          case 'monthly':
+            startDate.setMonth(startDate.getMonth() - 1);
+            break;
+          case 'quarterly':
+            startDate.setMonth(startDate.getMonth() - 3);
+            break;
+          case 'yearly':
+            startDate.setFullYear(startDate.getFullYear() - 1);
+            break;
+          case 'all':
+            startDate = new Date(2020, 0, 1); // Set a past date to get all data
+            break;
+        }
+        
+        const formatDate = (date: Date) => {
+          return date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+        };
+        
+        // Add a small delay to ensure the request completes properly (workaround for timing issues)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const response = await api.get(
+          `/api/attendances/statistics/summary?start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}`
+        );
+        
+        console.log('Statistics API response:', response.data);
+        
+        // Return the data if available or create a default statistics object
+        if (response.data?.detail) {
+          return response.data.detail;
+        }
+        
+        // Create a default statistics object with empty data
+        console.error('API response missing expected structure');
+        return {
+          period: period,
+          model_usage: {},
+          model_accuracy: {},
+          message: 'No data available for the selected period'
+        };
+      } catch (err) {
+        console.error('Error fetching statistics:', err);
+        throw err;
+      }
+    },
+    {
+      // Add retry to handle potential API connection issues
+      retry: 2,
+      retryDelay: 1000,
+      // Don't refetch on window focus to prevent unnecessary requests
+      refetchOnWindowFocus: false
     }
   );
 
@@ -137,11 +195,45 @@ const StatisticsPage: React.FC = () => {
   }
 
   if (error) {
+    console.error('Statistics error:', error);
     return (
-      <Alert status="error">
-        <AlertIcon />
-        Erro ao carregar estatísticas. Por favor, tente novamente mais tarde.
-      </Alert>
+      <Box p={8}>
+        <Alert status="error" mb={6}>
+          <AlertIcon />
+          Erro ao carregar estatísticas. Por favor, tente novamente mais tarde.
+        </Alert>
+        <Button onClick={() => window.location.reload()} colorScheme="blue">
+          Tentar novamente
+        </Button>
+      </Box>
+    );
+  }
+  
+  // If there's no data but also no error, show empty state
+  if (!statistics || (Object.keys(statistics.model_usage || {}).length === 0 && 
+      Object.keys(statistics.model_accuracy || {}).length === 0)) {
+    return (
+      <Box py={8}>
+        <Flex justifyContent="space-between" alignItems="center" mb={6}>
+          <Heading size="lg">Estatísticas</Heading>
+          <Select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            maxW="200px"
+          >
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensal</option>
+            <option value="quarterly">Trimestral</option>
+            <option value="yearly">Anual</option>
+            <option value="all">Todo o período</option>
+          </Select>
+        </Flex>
+        
+        <Alert status="info" mb={6}>
+          <AlertIcon />
+          Não existem dados estatísticos disponíveis para o período selecionado.
+        </Alert>
+      </Box>
     );
   }
 

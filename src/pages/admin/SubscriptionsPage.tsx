@@ -55,14 +55,36 @@ const SubscriptionsPage: React.FC = () => {
 
   // Get subscriptions from API
   const { data: subscriptions, isLoading, error } = useQuery(['subscriptions'], async () => {
-    const response = await api.get('/api/subscriptions');
-    return response.data.detail.subscriptions;
+    try {
+      // Usar o caminho correto para a API
+      const response = await api.get('/api/users/subscriptions');
+      console.log('Subscriptions API response:', response.data);
+      
+      if (response.data?.detail?.subscriptions) {
+        return response.data.detail.subscriptions;
+      }
+      
+      // Tentar outras possíveis estruturas de resposta
+      if (Array.isArray(response.data?.detail)) {
+        return response.data.detail;
+      }
+      
+      console.error('API response missing expected structure');
+      return [];
+    } catch (err) {
+      console.error('Error fetching subscriptions:', err);
+      throw err;
+    }
+  }, {
+    // Adicionar retry para lidar com possíveis problemas de conexão
+    retry: 2,
+    retryDelay: 1000
   });
 
   // Create subscription mutation
   const createSubscriptionMutation = useMutation(
     async (newSubscription: { admin_id: string; start_date: string; end_date: string }) => {
-      return await api.post('/api/subscriptions', newSubscription);
+      return await api.post('/api/users/subscriptions', newSubscription);
     },
     {
       onSuccess: () => {
@@ -91,7 +113,7 @@ const SubscriptionsPage: React.FC = () => {
   // Update subscription mutation
   const updateSubscriptionMutation = useMutation(
     async ({ id, data }: { id: string; data: { status: 'active' | 'inactive' } }) => {
-      return await api.patch(`/api/subscriptions/${id}`, data);
+      return await api.put(`/api/users/subscriptions/${id}`, data);
     },
     {
       onSuccess: () => {
@@ -148,11 +170,38 @@ const SubscriptionsPage: React.FC = () => {
   }
 
   if (error) {
+    console.error('Subscriptions error:', error);
     return (
       <Box py={8}>
-        <Alert status="error">
+        <Alert status="error" mb={6}>
           <AlertIcon />
           Erro ao carregar assinaturas. Por favor, tente novamente mais tarde.
+        </Alert>
+        <Button onClick={() => window.location.reload()} colorScheme="blue">
+          Tentar novamente
+        </Button>
+      </Box>
+    );
+  }
+  
+  // Se não houver subscrições mas também não houver erro, mostrar estado vazio
+  if (!subscriptions || subscriptions.length === 0) {
+    return (
+      <Box py={8}>
+        <Flex justifyContent="space-between" alignItems="center" mb={6}>
+          <Heading size="lg">Assinaturas</Heading>
+          <Button
+            leftIcon={<FiPlus />}
+            colorScheme="primary"
+            onClick={onOpen}
+          >
+            Nova Assinatura
+          </Button>
+        </Flex>
+        
+        <Alert status="info" mb={6}>
+          <AlertIcon />
+          Não existem assinaturas cadastradas ainda.
         </Alert>
       </Box>
     );

@@ -45,19 +45,53 @@ const UsersPage: FC = () => {
   const queryClient = useQueryClient();
 
   // Get the users from the API
-  const { data: usersData, isLoading, error } = useQuery(['users'], async () => {
-    const response = await api.get('/api/users');
-    return response.data.detail.users;
+  const { data: usersData, isLoading, error } = useQuery<User[]>(['users'], async () => {
+    try {
+      // Add a small delay to ensure the request completes properly (workaround for timing issues)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const response = await api.get('/api/users');
+      console.log('Raw API response:', response.data);
+      
+      // Correctly handle the expected API response structure
+      if (response.data?.detail?.users && Array.isArray(response.data.detail.users)) {
+        return response.data.detail.users;
+      }
+      
+      console.error('API response missing expected structure. Expected: detail.users array');
+      return [];
+    } catch (err) {
+      console.error('Error fetching users:', err);
+      throw err;
+    }
+  }, {
+    // Add retry to handle potential API connection issues
+    retry: 2,
+    retryDelay: 1000,
+    // Add staleTime to prevent too frequent refreshes
+    staleTime: 30000
   });
 
+  // Ensure usersData is treated as an array
+  const usersArray = Array.isArray(usersData) ? usersData : [];
+  
+  // Log data for debugging
+  console.log('UsersData type:', typeof usersData, usersData);
+  
   // Filter the users based on the search term, profile and status
-  const filteredUsers = usersData?.filter((user: User) => {
-    const matchesSearch = user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesProfile = profileFilter === 'all' || user.profile === profileFilter;
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    
-    return matchesSearch && matchesProfile && matchesStatus;
+  const filteredUsers = usersArray.filter((user: User) => {
+    try {
+      const matchesSearch = 
+        (user.full_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+      const matchesProfile = profileFilter === 'all' || user.profile === profileFilter;
+      const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+      
+      return matchesSearch && matchesProfile && matchesStatus;
+    } catch (err) {
+      console.error('Error filtering user:', user, err);
+      return false;
+    }
   });
 
   // Delete user mutation
@@ -180,9 +214,16 @@ const UsersPage: FC = () => {
       </Flex>
 
       {isLoading ? (
-        <Box>Carregando...</Box>
+        <Box p={4} textAlign="center">Carregando usuários...</Box>
       ) : error ? (
-        <Box>Erro ao carregar usuários</Box>
+        <Box p={4} color="red.500" textAlign="center">
+          Erro ao carregar usuários. Por favor, tente novamente mais tarde.
+          {console.error('Error in UsersPage:', error)}
+        </Box>
+      ) : !filteredUsers || filteredUsers.length === 0 ? (
+        <Box p={4} textAlign="center">
+          Nenhum usuário encontrado. {!usersData ? 'Erro ao carregar dados da API.' : 'Tente ajustar os filtros.'}
+        </Box>
       ) : (
         <Box overflowX="auto">
           <Table variant="simple">

@@ -39,6 +39,21 @@ import {
   BreastCancerDetection 
 } from '../../types';
 
+// Função utilitária para formatação consistente de porcentagens
+const formatPercentage = (value: number): string => {
+  // Verificar se o valor já está em porcentagem (>= 1)
+  if (value >= 1 && value <= 100) {
+    // Já está em porcentagem, formatar com 2 casas decimais
+    return value.toFixed(2) + '%';
+  } else if (value > 100) {
+    // O valor é maior que 100, deve ser dividido por 100
+    return (value / 100).toFixed(2) + '%';
+  } else {
+    // Valor é uma fração decimal (0-1), converter para porcentagem
+    return (value * 100).toFixed(2) + '%';
+  }
+};
+
 type ModelType = 'respiratory' | 'tuberculosis' | 'osteoporosis' | 'breast';
 
 const PredictionsPage: React.FC = () => {
@@ -102,14 +117,51 @@ const PredictionsPage: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await api.post(`/api/predictions/${model}`, formData, {
+      // Use o endpoint correto para câncer de mama
+      const endpoint = model === 'breast' ? 'breast-cancer' : model;
+      
+      const response = await api.post(`/api/predictions/${endpoint}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
       
+      // Normalizar dados quando necessário
+      const data = response.data.detail;
+      
+      // Normalizar porcentagens para garantir consistência (valores entre 0-1)
+      if (model === 'respiratory' && data.prediction) {
+        // Verificar se algum valor está acima de 1, indicando que precisa ser normalizado
+        const needsNormalization = Object.values(data.prediction).some(val => val > 1);
+        if (needsNormalization) {
+          Object.keys(data.prediction).forEach(key => {
+            if (data.prediction[key] > 1) {
+              data.prediction[key] = data.prediction[key] / 100;
+            }
+          });
+        }
+      }
+      
+      // Similar para outros modelos
+      if (model === 'tuberculosis' && data.prediction?.probabilities) {
+        if (data.prediction.probabilities.positive > 1) {
+          data.prediction.probabilities.positive /= 100;
+        }
+        if (data.prediction.probabilities.negative > 1) {
+          data.prediction.probabilities.negative /= 100;
+        }
+      }
+      
+      if (model === 'osteoporosis' && data.prediction?.probabilities) {
+        Object.keys(data.prediction.probabilities).forEach(key => {
+          if (data.prediction.probabilities[key] > 1) {
+            data.prediction.probabilities[key] /= 100;
+          }
+        });
+      }
+      
       return { 
-        data: response.data.detail,
+        data,
         model 
       };
     },
@@ -146,9 +198,25 @@ const PredictionsPage: React.FC = () => {
         });
       },
       onError: (error: any) => {
+        console.error('Erro na predição:', error);
+        
+        let errorMessage = 'Ocorreu um erro ao processar a imagem';
+        
+        // Tentar extrair a mensagem de erro da resposta da API
+        if (error.response?.data?.detail?.message) {
+          errorMessage = error.response.data.detail.message;
+        } else if (error.message) {
+          errorMessage = `Erro: ${error.message}`;
+        }
+        
+        // Se for um erro específico do endpoint breast-cancer, adicione informações
+        if (modelType === 'breast') {
+          errorMessage += '. Verifique se a URL da API para detecção de câncer de mama está correta.';
+        }
+        
         toast({
           title: 'Erro na predição',
-          description: error.response?.data?.detail?.message || 'Ocorreu um erro ao processar a imagem',
+          description: errorMessage,
           status: 'error',
           duration: 5000,
           isClosable: true,
@@ -227,7 +295,7 @@ const PredictionsPage: React.FC = () => {
                 <Box key={disease}>
                   <Flex justify="space-between" mb={1}>
                     <Text>{disease}</Text>
-                    <Text fontWeight="bold">{(probability * 100).toFixed(2)}%</Text>
+                    <Text fontWeight="bold">{formatPercentage(probability)}</Text>
                   </Flex>
                   <Progress 
                     value={probability * 100} 
@@ -247,7 +315,7 @@ const PredictionsPage: React.FC = () => {
                   p={2}
                   borderRadius="md"
                 >
-                  {sortedDiseases[0][0]} ({(sortedDiseases[0][1] * 100).toFixed(2)}%)
+                  {sortedDiseases[0][0]} ({formatPercentage(sortedDiseases[0][1])})
                 </Badge>
               </Box>
             </VStack>
@@ -299,7 +367,7 @@ const PredictionsPage: React.FC = () => {
               <Box>
                 <Flex justify="space-between" mb={1}>
                   <Text>Positivo</Text>
-                  <Text fontWeight="bold">{(probabilities.positive * 100).toFixed(2)}%</Text>
+                  <Text fontWeight="bold">{formatPercentage(probabilities.positive)}</Text>
                 </Flex>
                 <Progress 
                   value={probabilities.positive * 100} 
@@ -310,7 +378,7 @@ const PredictionsPage: React.FC = () => {
                 
                 <Flex justify="space-between" mb={1}>
                   <Text>Negativo</Text>
-                  <Text fontWeight="bold">{(probabilities.negative * 100).toFixed(2)}%</Text>
+                  <Text fontWeight="bold">{formatPercentage(probabilities.negative)}</Text>
                 </Flex>
                 <Progress 
                   value={probabilities.negative * 100} 
@@ -373,7 +441,7 @@ const PredictionsPage: React.FC = () => {
               <Box>
                 <Flex justify="space-between" mb={1}>
                   <Text>Normal</Text>
-                  <Text fontWeight="bold">{(probabilities.Normal * 100).toFixed(2)}%</Text>
+                  <Text fontWeight="bold">{formatPercentage(probabilities.Normal)}</Text>
                 </Flex>
                 <Progress 
                   value={probabilities.Normal * 100} 
@@ -384,7 +452,7 @@ const PredictionsPage: React.FC = () => {
                 
                 <Flex justify="space-between" mb={1}>
                   <Text>Osteopenia</Text>
-                  <Text fontWeight="bold">{(probabilities.Osteopenia * 100).toFixed(2)}%</Text>
+                  <Text fontWeight="bold">{formatPercentage(probabilities.Osteopenia)}</Text>
                 </Flex>
                 <Progress 
                   value={probabilities.Osteopenia * 100} 
@@ -395,7 +463,7 @@ const PredictionsPage: React.FC = () => {
                 
                 <Flex justify="space-between" mb={1}>
                   <Text>Osteoporose</Text>
-                  <Text fontWeight="bold">{(probabilities.Osteoporosis * 100).toFixed(2)}%</Text>
+                  <Text fontWeight="bold">{formatPercentage(probabilities.Osteoporosis)}</Text>
                 </Flex>
                 <Progress 
                   value={probabilities.Osteoporosis * 100} 
@@ -443,7 +511,7 @@ const PredictionsPage: React.FC = () => {
                       <Flex justify="space-between">
                         <Text fontWeight="bold">Detecção {index + 1}</Text>
                         <Badge colorScheme="red">
-                          {(box.confidence * 100).toFixed(1)}% confiança
+                          {formatPercentage(box.confidence)} confiança
                         </Badge>
                       </Flex>
                       {box.observations && (
@@ -613,7 +681,7 @@ const PredictionsPage: React.FC = () => {
                 <Box mt={8} bg="gray.50" p={4} borderRadius="md">
                   <Heading size="sm" mb={2}>Informações do Modelo: {modelType}</Heading>
                   <Text fontSize="sm">
-                    {modelType === 'respiratory' && 'Este modelo identifica 14 condições pulmonares diferentes, incluindo pneumonia, COVID-19, e tuberculose.'}
+                    {modelType === 'respiratory' && 'Este modelo identifica 4 condições pulmonares a partir de raio-x torácico (normal, covid-19, pneumonia viral, pneumonia bacteriana).'}
                     {modelType === 'tuberculosis' && 'Este modelo é especializado na detecção de tuberculose a partir de raio-x torácico.'}
                     {modelType === 'osteoporosis' && 'Este modelo analisa imagens de DEXA para identificar osteoporose e osteopenia.'}
                     {modelType === 'breast' && 'Este modelo detecta e localiza potenciais lesões em mamografias, auxiliando no diagnóstico precoce de câncer de mama.'}

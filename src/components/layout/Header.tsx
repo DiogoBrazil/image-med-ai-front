@@ -98,7 +98,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
             cursor="pointer"
             onClick={() => navigate('/dashboard')}
           >
-            MedDiagnosis
+            ImageMedAi
           </Text>
         </Flex>
 
